@@ -108,15 +108,26 @@ curl -i "http://localhost:3000/webhook/whatsapp?hub.mode=subscribe&hub.verify_to
 
 ## Despliegue en Azure App Service
 
-1. App Service Linux, Node 22, en `rg-whatsapp-prod` (o el grupo compartido).
-2. **Configuración → Variables de entorno**: `VERIFY_TOKEN`, `APP_SECRET`, `ACCESS_TOKEN`, `APP_ID`, `ES_CONFIG_ID`,
-   `SQL_CONNECTION_STRING` (mejor como referencias a Key Vault). `PORT` lo pone Azure.
+1. App Service Linux, Node 22 (`app-whatsapp-ideam`, sin "hostname único"), con **identidad administrada
+   asignada por el sistema**.
+2. **Variables de entorno**:
+   - Secretos como referencias a Key Vault (`@Microsoft.KeyVault(...)`; la identidad necesita el rol
+     *Key Vault Secrets User*): `VERIFY_TOKEN`, `APP_SECRET`, `ACCESS_TOKEN`.
+   - Valores normales: `APP_ID`, `ES_CONFIG_ID`, `SQL_SERVER`, `SQL_DATABASE`. `PORT` lo pone Azure.
 3. **Configuración general**: comando de inicio `npm start`, **Always On activado** (si no, la app se duerme y el
    procesado en segundo plano se corta), health check en `/health`.
-4. En Azure SQL, permitir el acceso desde App Service (firewall / "Allow Azure services").
-5. GitHub: variable `AZURE_WEBAPP_NAME` y secreto `AZURE_WEBAPP_PUBLISH_PROFILE`; el workflow
+4. **Azure SQL solo con autenticación de Entra ID**: permitir el acceso desde servicios de Azure y, como
+   administrador de Entra, ejecutar [sql/schema.sql](sql/schema.sql) y después
+   [sql/grant-webapp-identity.sql](sql/grant-webapp-identity.sql).
+5. **Despliegue por OIDC**: crear una app registration (o identidad administrada asignada por el usuario) con
+   *credencial federada* para `repo:ideamestudicreatiu/whatsapp-webhook:ref:refs/heads/main` y rol
+   *Website Contributor* sobre la web app. En GitHub, variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+   `AZURE_SUBSCRIPTION_ID` y `AZURE_WEBAPP_NAME`. El workflow
    [.github/workflows/deploy.yml](.github/workflows/deploy.yml) despliega en cada push a `main`.
-6. En Meta (App → WhatsApp → Configuración): URL `https://<app>.azurewebsites.net/webhook/whatsapp`, el mismo
+6. **Logs y alertas**: Application Insights basado en un área de trabajo de Log Analytics. Añadir una
+   configuración de diagnóstico de la web app que envíe `AppServiceConsoleLogs` a esa área de trabajo, y una
+   regla de alerta sobre `AppServiceConsoleLogs | where ResultDescription has "ALERTA"`.
+7. En Meta (App → WhatsApp → Configuración): URL `https://<app>.azurewebsites.net/webhook/whatsapp`, el mismo
    `VERIFY_TOKEN`, y suscribir los campos `messages`, `smb_message_echoes`, `history`, `smb_app_state_sync`,
    `account_update`.
 
