@@ -52,9 +52,69 @@ export async function updateAccountStatusByWaba(wabaId: string, status: string):
     .request()
     .input('WabaId', sql.NVarChar(32), wabaId)
     .input('Status', sql.NVarChar(20), status)
-    .query(`UPDATE dbo.WhatsAppAccounts SET Status = @Status, UpdatedAt = SYSUTCDATETIME() WHERE WabaId = @WabaId`);
+    .query(`
+      UPDATE dbo.WhatsAppAccounts SET
+        Status = @Status,
+        -- inicio del plazo de conservación tras la baja (se borra a los RETENTION_DAYS)
+        DisconnectedAt = CASE WHEN @Status = 'disconnected' THEN COALESCE(DisconnectedAt, SYSUTCDATETIME()) ELSE NULL END,
+        UpdatedAt = SYSUTCDATETIME()
+      WHERE WabaId = @WabaId`);
   accountCache.clear();
   return result.rowsAffected[0] ?? 0;
+}
+
+// ---------- Conservación y borrado de datos ----------
+
+/** Cuentas desconectadas hace más de `days` días. */
+export async function listExpiredDisconnectedAccounts(days: number): Promise<{ phoneNumberId: string; clientId: string; wabaId: string }[]> {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('Days', sql.Int, days)
+    .query(`
+      SELECT PhoneNumberId AS phoneNumberId, ClientId AS clientId, WabaId AS wabaId
+      FROM dbo.WhatsAppAccounts
+      WHERE Status = 'disconnected' AND DisconnectedAt < DATEADD(DAY, -@Days, SYSUTCDATETIME())`);
+  return result.recordset;
+}
+
+/** Borra todo lo de un número: mensajes, conversaciones, contactos, eventos y la propia cuenta (con su token). */
+export async function deleteAccountData(phoneNumberId: string): Promise<void> {
+  const pool = await getPool();
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+  try {
+    await new sql.Request(transaction).input('PhoneNumberId', sql.NVarChar(32), phoneNumberId).query(`
+      DECLARE @WabaId NVARCHAR(32) = (SELECT WabaId FROM dbo.WhatsAppAccounts WHERE PhoneNumberId = @PhoneNumberId);
+      DELETE m FROM dbo.Messages m JOIN dbo.Conversations c ON c.ConversationId = m.ConversationId WHERE c.PhoneNumberId = @PhoneNumberId;
+      DELETE FROM dbo.Conversations WHERE PhoneNumberId = @PhoneNumberId;
+      DELETE FROM dbo.Contacts WHERE PhoneNumberId = @PhoneNumberId;
+      DELETE FROM dbo.WebhookEvents WHERE PhoneNumberId = @PhoneNumberId;
+      DELETE FROM dbo.WhatsAppAccounts WHERE PhoneNumberId = @PhoneNumberId;
+      -- eventos sin número (account_update) de una WABA que ya no tiene cuentas
+      IF @WabaId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.WhatsAppAccounts WHERE WabaId = @WabaId)
+        DELETE FROM dbo.WebhookEvents WHERE WabaId = @WabaId;`);
+    await transaction.commit();
+  } catch (err) {
+    await transaction.rollback().catch(() => {});
+    throw err;
+  }
+  accountCache.delete(phoneNumberId);
+}
+
+/** Los eventos en bruto solo sirven para depurar y reprocesar: se borran pasados `days` días. */
+export async function purgeOldWebhookEvents(days: number): Promise<number> {
+  const pool = await getPool();
+  let total = 0;
+  for (;;) {
+    const result = await pool
+      .request()
+      .input('Days', sql.Int, days)
+      .query(`DELETE TOP (5000) FROM dbo.WebhookEvents WHERE ReceivedAt < DATEADD(DAY, -@Days, SYSUTCDATETIME())`);
+    const deleted = result.rowsAffected[0] ?? 0;
+    total += deleted;
+    if (deleted < 5000) return total;
+  }
 }
 
 // ---------- Alta (Embedded Signup) ----------
@@ -114,7 +174,7 @@ export async function saveOnboardedAccount(a: {
         OnboardedAt = SYSUTCDATETIME(),
         ContactsSyncRequestedAt = NULL, ContactsSyncRequestId = NULL,
         HistorySyncRequestedAt = NULL, HistorySyncRequestId = NULL,
-        SyncError = NULL, SyncAlertedAt = NULL, UpdatedAt = SYSUTCDATETIME()
+        SyncError = NULL, SyncAlertedAt = NULL, DisconnectedAt = NULL, UpdatedAt = SYSUTCDATETIME()
       WHEN NOT MATCHED THEN
         INSERT (PhoneNumberId, ClientId, WabaId, DisplayPhoneNumber, AccessToken, Status, OnboardingType, OnboardedAt)
         VALUES (@PhoneNumberId, @ClientId, @WabaId, @DisplayPhoneNumber, @AccessToken, 'active', @OnboardingType, SYSUTCDATETIME());`);

@@ -7,6 +7,7 @@ import { closePool } from './db/pool';
 import { errorInfo, log } from './logger';
 import { OnboardingError, runOnboarding, runTokenRenewal, startSyncWatchdog, verifyOnboardingLink } from './onboarding/onboarding';
 import { startTokenWatchdog } from './onboarding/tokens';
+import { startRetentionJob } from './retention';
 import { isValidSignature, safeEqual } from './signature';
 import { processWebhook } from './webhook/process';
 import { sendMessage, sendText, WhatsAppApiError } from './whatsapp/graph';
@@ -130,6 +131,7 @@ const server = app.listen(config.port, () => {
 });
 startSyncWatchdog();
 startTokenWatchdog();
+startRetentionJob();
 
 async function shutdown(signal: string) {
   log.info('Apagando', { signal });

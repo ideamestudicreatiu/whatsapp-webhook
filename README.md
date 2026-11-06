@@ -131,6 +131,19 @@ curl -i "http://localhost:3000/webhook/whatsapp?hub.mode=subscribe&hub.verify_to
    `VERIFY_TOKEN`, y suscribir los campos `messages`, `smb_message_echoes`, `history`, `smb_app_state_sync`,
    `account_update`.
 
+## Conservación y borrado de datos
+
+La política de privacidad promete conservar los datos mientras dure el contrato, y **como máximo 30 días tras la
+baja o desconexión** (`RETENTION_DAYS` en [src/retention.ts](src/retention.ts)). Una tarea diaria se encarga de:
+
+- **Cuentas desconectadas**: un `account_update` de desconexión (`PARTNER_REMOVED`, `ACCOUNT_OFFBOARDED`…) marca
+  `DisconnectedAt`. A los 30 días se borran sus mensajes, conversaciones, contactos, eventos y la cuenta con su
+  token. Si el cliente se reconecta antes, se cancela el borrado.
+- **Eventos en bruto** (`dbo.WebhookEvents`): se borran a los 30 días, sea cual sea su estado.
+
+Para borrar algo **a petición**, como la baja inmediata de un cliente o un usuario final que ejerce su derecho de
+supresión, usa [sql/delete-data.sql](sql/delete-data.sql).
+
 ## Limitaciones conocidas
 
 - Se responde 200 antes de guardar: si el proceso cae justo en ese momento, el evento se pierde (Meta no lo reenvía).
