@@ -21,6 +21,6 @@ export const config = {
   sqlServer,
   sqlDatabase,
   sqlManagedIdentityClientId: process.env.SQL_MANAGED_IDENTITY_CLIENT_ID || undefined, // solo para identidad asignada por el usuario
-  graphApiVersion: process.env.GRAPH_API_VERSION || 'v26.0',
+  graphApiVersion: process.env.GRAPH_API_VERSION || 'v27.0',
   internalApiKey: process.env.INTERNAL_API_KEY || undefined,
 };
