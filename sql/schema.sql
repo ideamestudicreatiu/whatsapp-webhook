@@ -12,7 +12,7 @@ CREATE TABLE dbo.WhatsAppAccounts (
   ClientId           NVARCHAR(50)  NOT NULL REFERENCES dbo.Clients (ClientId),
   WabaId             NVARCHAR(32)  NOT NULL,
   DisplayPhoneNumber NVARCHAR(32)  NULL,
-  AccessToken        NVARCHAR(MAX) NULL,  -- token del cliente (Embedded Signup); NULL = usar ACCESS_TOKEN
+  AccessToken        NVARCHAR(MAX) NULL,  -- "kv:<secreto>" (token del cliente en Key Vault); NULL = usar ACCESS_TOKEN
   Status             NVARCHAR(20)  NOT NULL DEFAULT 'active', -- active | disconnected
   DisconnectedAt     DATETIME2     NULL, -- inicio del plazo de conservación; los datos se borran 30 días después
   -- Embedded Signup. En coexistencia, smb_app_data debe pedirse (una sola vez por tipo) en las 24 h siguientes al alta.

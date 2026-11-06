@@ -64,7 +64,7 @@ const onboardingHtml = readFileSync(path.join(__dirname, '..', 'public', 'onboar
 
 app.get('/onboarding', (req, res) => {
   if (!verifyOnboardingLink(req.query.client, req.query.purpose, req.query.exp, req.query.sig)) {
-    res.status(403).type('text/plain').send('Enlace de alta no válido o caducado. Pide uno nuevo a IDEAM Studio.');
+    res.status(403).type('text/plain').send('Enlace de alta no válido o caducado. Pide uno nuevo a Ideam Estudi Creatiu.');
     return;
   }
   res.type('html').send(onboardingHtml);

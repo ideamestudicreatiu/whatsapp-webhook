@@ -1,4 +1,5 @@
 import { getPool, sql } from './pool';
+import { resolveToken, storeToken } from './tokenStore';
 
 export interface WhatsAppAccount {
   phoneNumberId: string;
@@ -41,6 +42,7 @@ export async function findAccountByPhoneNumberId(phoneNumberId: string): Promise
       FROM dbo.WhatsAppAccounts WHERE PhoneNumberId = @PhoneNumberId`);
 
   const account = result.recordset[0] ?? null;
+  if (account) account.accessToken = await resolveToken(account.accessToken);
   // Los "no encontrado" se cachean poco para que un cliente recién dado de alta empiece a funcionar enseguida
   accountCache.set(phoneNumberId, { account, expires: Date.now() + (account ? 60_000 : 10_000) });
   return account;
@@ -156,6 +158,7 @@ export async function saveOnboardedAccount(a: {
   accessToken: string;
   onboardingType: 'coexistence' | 'cloud_api';
 }): Promise<void> {
+  const storedToken = await storeToken(a.wabaId, a.accessToken);
   const pool = await getPool();
   await pool
     .request()
@@ -163,7 +166,7 @@ export async function saveOnboardedAccount(a: {
     .input('ClientId', sql.NVarChar(50), a.clientId)
     .input('WabaId', sql.NVarChar(32), a.wabaId)
     .input('DisplayPhoneNumber', sql.NVarChar(32), a.displayPhoneNumber)
-    .input('AccessToken', sql.NVarChar(sql.MAX), a.accessToken)
+    .input('AccessToken', sql.NVarChar(sql.MAX), storedToken)
     .input('OnboardingType', sql.NVarChar(20), a.onboardingType)
     .query(`
       MERGE dbo.WhatsAppAccounts WITH (HOLDLOCK) AS t
@@ -223,6 +226,7 @@ export async function listPendingSyncAccounts(): Promise<(PendingSyncAccount & {
       AND AccessToken IS NOT NULL AND Status = 'active'
       AND (ContactsSyncRequestedAt IS NULL OR HistorySyncRequestedAt IS NULL)
       AND OnboardedAt < DATEADD(MINUTE, -5, SYSUTCDATETIME())`);
+  for (const row of result.recordset) row.accessToken = await resolveToken(row.accessToken);
   return result.recordset;
 }
 
@@ -252,11 +256,12 @@ export async function findClientIdByWaba(wabaId: string): Promise<string | null>
 
 /** Guarda la caducidad del token de una WABA. Con newToken, sustituye el token y reinicia las alertas. */
 export async function saveTokenInfo(wabaId: string, info: TokenInfo, newToken?: string): Promise<void> {
+  const storedNewToken = newToken ? await storeToken(wabaId, newToken) : null;
   const pool = await getPool();
   await pool
     .request()
     .input('WabaId', sql.NVarChar(32), wabaId)
-    .input('NewToken', sql.NVarChar(sql.MAX), newToken ?? null)
+    .input('NewToken', sql.NVarChar(sql.MAX), storedNewToken)
     .input('IsValid', sql.Bit, info.isValid)
     .input('ExpiresAt', sql.DateTime2, info.expiresAt)
     .input('DataAccessExpiresAt', sql.DateTime2, info.dataAccessExpiresAt)
@@ -289,7 +294,16 @@ export async function listTokenAccounts(): Promise<TokenAccount[]> {
     WHERE AccessToken IS NOT NULL AND Status = 'active'`);
   const byWaba = new Map<string, TokenAccount>();
   for (const row of result.recordset) if (!byWaba.has(row.wabaId)) byWaba.set(row.wabaId, row);
-  return [...byWaba.values()];
+  const accounts = [...byWaba.values()];
+  for (const account of accounts) account.accessToken = (await resolveToken(account.accessToken)) ?? account.accessToken;
+  return accounts;
+}
+
+/** Todas las WABA que siguen en la base (para limpiar secretos huérfanos en Key Vault). */
+export async function listWabaIds(): Promise<Set<string>> {
+  const pool = await getPool();
+  const result = await pool.request().query<{ WabaId: string }>(`SELECT DISTINCT WabaId FROM dbo.WhatsAppAccounts`);
+  return new Set(result.recordset.map((r) => r.WabaId));
 }
 
 // ---------- Registro de eventos ----------

@@ -1,6 +1,6 @@
 # Webhook de WhatsApp Cloud API (multi-cliente)
 
-Servicio Node.js + TypeScript para IDEAM Studio como Tech Provider. Recibe los webhooks de todos los
+Servicio Node.js + TypeScript para Ideam Estudi Creatiu como Tech Provider. Recibe los webhooks de todos los
 clientes en una sola URL, identifica el cliente por `phone_number_id` y guarda contactos, conversaciones
 y mensajes en Azure SQL.
 
@@ -74,7 +74,7 @@ Con la plantilla oficial de Embedded Signup el token de cada cliente caduca (uno
   npm run onboarding-link -- padel-club https://<app>.azurewebsites.net --renew
   ```
 
-Alternativa sin caducidad: asignar los activos de cada cliente al usuario del sistema de IDEAM Studio y dejar
+Alternativa sin caducidad: asignar los activos de cada cliente al usuario del sistema de Ideam Estudi Creatiu y dejar
 `AccessToken = NULL`, para que se use el token permanente de `ACCESS_TOKEN`. Esas cuentas no se vigilan.
 
 Si el cliente elige en el flujo un número nuevo en vez de su app Business (`OnboardingType = cloud_api`), no
@@ -111,8 +111,10 @@ curl -i "http://localhost:3000/webhook/whatsapp?hub.mode=subscribe&hub.verify_to
 1. App Service Linux, Node 22 (`app-whatsapp-ideam`, sin "hostname único"), con **identidad administrada
    asignada por el sistema**.
 2. **Variables de entorno**:
-   - Secretos como referencias a Key Vault (`@Microsoft.KeyVault(...)`; la identidad necesita el rol
-     *Key Vault Secrets User*): `VERIFY_TOKEN`, `APP_SECRET`, `ACCESS_TOKEN`.
+   - Secretos como referencias a Key Vault (`@Microsoft.KeyVault(...)`): `VERIFY_TOKEN`, `APP_SECRET`, `ACCESS_TOKEN`.
+   - `KEY_VAULT_URL=https://kv-whatsapp-ideam.vault.azure.net/`: los tokens de cada cliente se guardan como secretos
+     `waba-<id>-token` y en la base solo queda la referencia. La identidad de la web app necesita el rol
+     *Key Vault Secrets Officer* (leer, escribir y borrar secretos).
    - Valores normales: `APP_ID`, `ES_CONFIG_ID`, `SQL_SERVER`, `SQL_DATABASE`. `PORT` lo pone Azure.
 3. **Configuración general**: comando de inicio `npm start`, **Always On activado** (si no, la app se duerme y el
    procesado en segundo plano se corta), health check en `/health`.
@@ -148,6 +150,5 @@ supresión, usa [sql/delete-data.sql](sql/delete-data.sql).
 
 - Se responde 200 antes de guardar: si el proceso cae justo en ese momento, el evento se pierde (Meta no lo reenvía).
   Con más volumen, el siguiente paso es encolar el payload (Azure Service Bus / Storage Queue) antes de responder.
-- Los `AccessToken` de clientes se guardan en claro en la tabla; conviene moverlos a Key Vault.
 - Los ficheros multimedia no se descargan: se guarda el `media id` en `Payload` (caduca, hay que descargarlo pronto
   con `GET /{media_id}` si se necesita).

@@ -21,6 +21,8 @@ export const config = {
   sqlServer,
   sqlDatabase,
   sqlManagedIdentityClientId: process.env.SQL_MANAGED_IDENTITY_CLIENT_ID || undefined, // solo para identidad asignada por el usuario
+  // Si se define, los tokens de los clientes se guardan en Key Vault y en la base solo queda la referencia
+  keyVaultUrl: process.env.KEY_VAULT_URL || undefined,
   graphApiVersion: process.env.GRAPH_API_VERSION || 'v27.0',
   internalApiKey: process.env.INTERNAL_API_KEY || undefined,
 };

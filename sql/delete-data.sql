@@ -17,6 +17,7 @@ BEGIN
   DELETE FROM dbo.WebhookEvents
     WHERE ClientId = @ClientId OR WabaId IN (SELECT WabaId FROM dbo.WhatsAppAccounts WHERE ClientId = @ClientId);
   DELETE FROM dbo.WhatsAppAccounts WHERE ClientId = @ClientId;  -- incluye los tokens
+  -- Los tokens en Key Vault de las cuentas borradas los elimina sola la tarea diaria del servicio.
   -- dbo.Clients se conserva: el cliente puede usar otras herramientas de la plataforma.
 END
 ELSE
