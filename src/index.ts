@@ -21,6 +21,11 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+// La raíz no es parte del servicio: lleva a la página pública del servicio
+app.get('/', (_req, res) => {
+  res.redirect(301, 'https://www.ideamestudi.com/automatizacion-whatsapp/');
+});
+
 // Verificación de Meta al configurar el webhook
 app.get('/webhook/whatsapp', (req, res) => {
   const mode = req.query['hub.mode'];
